@@ -1,0 +1,49 @@
+{
+  "apiKeyRequired": false,
+  "httpMethod": "GET",
+  "methodIntegration": {
+    "integrationResponses": {
+      "200": {
+        "responseTemplates": {
+          "application/json": null
+        },
+        "statusCode": "200"
+      }
+    },
+    "contentHandling": "CONVERT_TO_TEXT",
+    "cacheKeyParameters": [],
+    "uri": "arn:aws:apigateway:eu-west-1:lambda:path/2015-03-31/functions/arn:aws:lambda:eu-west-1:039898779445:function:testWykopLambda/invocations",
+    "httpMethod": "POST",
+    "passthroughBehavior": "WHEN_NO_TEMPLATES",
+    "requestTemplates": {
+      "application/json": "{ \n    \"from\": \"$input.params('from')\",\n    \"to\": \"$input.params('to')\"\n}"
+    },
+    "cacheNamespace": "lapquo",
+    "type": "AWS"
+  },
+  "requestParameters": {
+    "method.request.querystring.from": false,
+    "method.request.querystring.to": false
+  },
+  "ResponseMetadata": {
+    "RetryAttempts": 0,
+    "HTTPStatusCode": 200,
+    "RequestId": "141a163b-2cc6-11e7-bae0-e16741ebcef5",
+    "HTTPHeaders": {
+      "date": "Sat, 29 Apr 2017 10:24:51 GMT",
+      "x-amzn-requestid": "141a163b-2cc6-11e7-bae0-e16741ebcef5",
+      "content-length": "817",
+      "content-type": "application/json",
+      "connection": "keep-alive"
+    }
+  },
+  "methodResponses": {
+    "200": {
+      "responseModels": {
+        "application/json": "Empty"
+      },
+      "statusCode": "200"
+    }
+  },
+  "authorizationType": "NONE"
+}
