@@ -1,7 +1,10 @@
-import boto3
 import json
 
-from aws.lambdas import get_lambda
+import boto3
+
+from aws.path import parse_request_string
+from aws.path import request_params_to_aws_request_params
+from aws.path import request_params_to_aws_request_template_dict
 
 
 class Rest:
@@ -30,7 +33,13 @@ class Rest:
 
         return next((r['id'] for r in response['items'] if r['path'] == path), None)
 
-    def create_path(self, path, parent_id):
+    def is_path_exists(self, path):
+        return self.get_path_id(path) is not None
+
+    def get_root_path_id(self):
+        return self.get_path_id("/")
+
+    def create_resource(self, path, parent_id):
         response = self.client.create_resource(
             restApiId=self.api_id,
             parentId=parent_id,
@@ -45,121 +54,76 @@ class Rest:
         )
         return response['id']
 
+    def map_lambda(self, method, path, lambda_function):
+        request_params = parse_request_string(path)
 
-class Resource:
-    def __init__(self, path):
-        if path.startswith('/'):
-            path = path[1:]
+        aws_request_params = request_params_to_aws_request_params(request_params)
+        aws_request_template_dict = request_params_to_aws_request_template_dict(request_params)
 
-        if path.endswith('/'):
-            path = path[:-1]
+        resources_array = list(r['request_string'] for r in request_params if r['type'] == "PATH" or r['type'] == "PATH_PARAM")
 
-        self.__path = path
-        self.__method = 'GET'
-        self.__query_string_params = []
-        self.__path_params = []
-        self.__header_params = []
-        self.__lambda_function = None
+        parent_id = self.create_path(resources_array)
 
-        self.__client = None
+        print("Result parent_id: "+str(parent_id))
 
-    def GET(self):
-        self.__method = 'GET'
-        return self
+        self.__map_lambda(parent_id, method, aws_request_params, aws_request_template_dict, lambda_function)
 
-    def POST(self):
-        self.__method = 'POST'
-        return self
+    def create_path(self, resources_array):
+        return self.__recursion_create_path_id("", resources_array, self.get_root_path_id())
 
-    def PUT(self):
-        self.__method = 'PUT'
-        return self
+    def __recursion_create_path_id(self, path_string, resources_array, parent_id):
+        print(parent_id)
+        if not resources_array:
+            print("Return parent id")
+            return parent_id
 
-    def DELETE(self):
-        self.__method = 'DELETE'
-        return self
+        path_string = path_string+"/"+resources_array[0]
+        if self.is_path_exists(path_string):
+            return self.__recursion_create_path_id(path_string, resources_array[1:], self.get_path_id(path_string))
+        else:
+            return self.__recursion_create_path_id(path_string, resources_array[1:], self.create_resource(resources_array[0], parent_id))
 
-    def with_querystring_param(self, name, required=True):
-        self.__query_string_params.append({'name': name, 'required': required})
-        return self
+    def __map_lambda(self, parent_id, method, request_params, request_template_dict, lb):
 
-    def calling_lambda(self, lambda_function):
-        self.__lambda_function = lambda_function
-        return self
+        print(request_params)
 
-    def add_to_api(self, api):
-        if self.__lambda_function is None:
-            raise ValueError("Missing lambda function")
-
-        request_params = {}
-        request_template_dict = {}
-
-        for qsp in self.__query_string_params:
-            request_params['method.request.querystring.' + qsp['name']] = qsp['required']
-            request_template_dict[qsp['name']] = "$input.params('%s')" % qsp['name']
-
-        resources = self.__path.split("/")
-
-        tmp_path = ""
-        parent_id = api.get_path_id("/")
-
-        for r_path in resources:
-            tmp_path = tmp_path + '/' + r_path
-            tmp_parent_id = api.get_path_id(tmp_path)
-
-            if tmp_parent_id is None:
-                parent_id = api.create_path(r_path, parent_id)
-            else:
-                parent_id = tmp_parent_id
-
-        if self.__client is None:
-            self.__client = boto3.client('apigateway')
-
-        self.__client.put_method(
-            restApiId=api.api_id,
+        self.client.put_method(
+            restApiId=self.api_id,
             resourceId=parent_id,
-            httpMethod=self.__method,
+            httpMethod=method,
             authorizationType='NONE',
             requestParameters=request_params,
         )
 
-        self.__client.put_method_response(
-            restApiId=api.api_id,
+        self.client.put_method_response(
+            restApiId=self.api_id,
             resourceId=parent_id,
-            httpMethod=self.__method,
+            httpMethod=method,
             statusCode='200'
         )
 
-        self.__client.put_integration(
-            restApiId=api.api_id,
+        self.client.put_integration(
+            restApiId=self.api_id,
             resourceId=parent_id,
-            httpMethod=self.__method,
+            httpMethod=method,
             type='AWS',
             integrationHttpMethod='POST',
-            uri="arn:aws:apigateway:" + boto3.session.Session().region_name + ":lambda:path/2015-03-31/functions/" + self.__lambda_function.get_arn() + "/invocations",
+            uri="arn:aws:apigateway:" + boto3.session.Session().region_name + ":lambda:path/2015-03-31/functions/" + lb.get_arn() + "/invocations",
             passthroughBehavior='WHEN_NO_MATCH',
             requestTemplates={
                 "application/json": json.dumps(request_template_dict)
             }
         )
 
-        self.__client.put_integration_response(
-            restApiId=api.api_id,
+        self.client.put_integration_response(
+            restApiId=self.api_id,
             resourceId=parent_id,
-            httpMethod=self.__method,
+            httpMethod=method,
             statusCode='200',
             selectionPattern=''  # Fix Invalid request input bug >:(
         )
 
         account_id = boto3.client('sts').get_caller_identity().get('Account')
-        self.__lambda_function.add_api_gateway_permission(api.api_id, account_id=account_id)
+        lb.add_api_gateway_permission(self.api_id, account_id=account_id)
 
 
-lb = get_lambda("awswcrawler.lambdas.batch_download.lambdas.create_batch_endpoint")
-
-api = Rest("test")
-Resource("api/download/batch").POST().with_querystring_param("start_id").with_querystring_param(
-    "end_id").calling_lambda(lb).add_to_api(api)
-Resource("api/download/batch").GET().with_querystring_param("start_id").with_querystring_param("end_id").calling_lambda(
-    lb).add_to_api(api)
-api.deploy("dev")
