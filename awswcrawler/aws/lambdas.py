@@ -10,6 +10,8 @@ def get_lambda(function_name):
     return next((LambdaFunction(lambda_name) for f in response['Functions'] if f['FunctionName'] == lambda_name), None)
 
 
+# instead of providing function name provide function. Generate name using
+# f.__module__+"."+f.__name__
 def create_lambda(function_name, bucket_name, bucket_key, role_arn):
     client = boto3.client('lambda')
 
