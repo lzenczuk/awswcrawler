@@ -7,16 +7,51 @@ from aws.path import request_params_to_aws_request_params
 from aws.path import request_params_to_aws_request_template_dict
 
 
+def get_api_id(name):
+    response = boto3.client('apigateway').get_rest_apis()
+
+    api_id = None
+    for i in response['items']:
+        if i['name'] == name:
+            api_id = i['id']
+
+    return api_id
+
+
+def delete_rest_api(name):
+    api_id = get_api_id(name)
+    if api_id is not None:
+        boto3.client('apigateway').delete_rest_api(restApiId=api_id)
+
+
 class Rest:
+    """
+    Class responsible for creating api gateway endpoints. Example usage:
+    
+    lb = get_lambda("test_lambda")
+    
+    api = Rest("test")
+    api.map_lambda("GET", "api/users/{user_id}", lb)
+    api.map_lambda("POST", "api/users/{user_id}", lb)
+    api.map_lambda("GET", "api/users/{user_id}/tasks", lb)
+    api.map_lambda("POST", "api/users/{user_id}/tasks?start_id={!start_id}&end_id={!end_id}", lb)
+    api.deploy("dev")
+    
+    """
     def __init__(self, name):
         self.name = name
         self.resources = []
         self.client = boto3.client('apigateway')
 
-        response = self.client.create_rest_api(
-            name=self.name
-        )
-        self.api_id = response['id']
+        api_id = get_api_id(name)
+
+        if api_id is None:
+            response = self.client.create_rest_api(
+                name=self.name
+            )
+            self.api_id = response['id']
+        else:
+            self.api_id = api_id
 
         response = self.client.get_resources(
             restApiId=self.api_id
@@ -64,17 +99,13 @@ class Rest:
 
         parent_id = self.create_path(resources_array)
 
-        print("Result parent_id: "+str(parent_id))
-
         self.__map_lambda(parent_id, method, aws_request_params, aws_request_template_dict, lambda_function)
 
     def create_path(self, resources_array):
         return self.__recursion_create_path_id("", resources_array, self.get_root_path_id())
 
     def __recursion_create_path_id(self, path_string, resources_array, parent_id):
-        print(parent_id)
         if not resources_array:
-            print("Return parent id")
             return parent_id
 
         path_string = path_string+"/"+resources_array[0]
@@ -84,8 +115,6 @@ class Rest:
             return self.__recursion_create_path_id(path_string, resources_array[1:], self.create_resource(resources_array[0], parent_id))
 
     def __map_lambda(self, parent_id, method, request_params, request_template_dict, lb):
-
-        print(request_params)
 
         self.client.put_method(
             restApiId=self.api_id,
@@ -125,5 +154,4 @@ class Rest:
 
         account_id = boto3.client('sts').get_caller_identity().get('Account')
         lb.add_api_gateway_permission(self.api_id, account_id=account_id)
-
 

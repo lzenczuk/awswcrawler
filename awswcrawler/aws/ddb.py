@@ -1,4 +1,5 @@
 import boto3
+from botocore.exceptions import ClientError
 import time
 from boto3.dynamodb.conditions import Key
 
@@ -121,6 +122,16 @@ def delete_table(name):
         client.delete_table(
             TableName=name
         )
+
+        for x in range(1, 5):
+            time.sleep(2)
+            try:
+                client.describe_table(TableName=name)
+            except ClientError as e:
+                print(e)
+                return
+
+        raise RuntimeError("Timeout waiting for table to be deleted")
 
 
 class DDBTable:

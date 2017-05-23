@@ -62,7 +62,7 @@ class LambdaFunction:
 
         source_arn = "arn:aws:execute-api:"+region+":"+account_id+":" + api_id + "/*/*"
 
-        statement_id = self.function_name+str(int(time.time()))
+        statement_id = self.function_name.replace(".", "-")+"-"+str(int(time.time()))
 
         response = self.client.add_permission(
             FunctionName=self.lambda_name,

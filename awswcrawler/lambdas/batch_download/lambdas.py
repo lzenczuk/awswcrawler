@@ -1,8 +1,8 @@
-import random
-import string
-import boto3
-import datetime
 import logging
+
+import uuid
+
+from awswcrawler.aws.ddb import get_table
 
 
 def create_batch_endpoint(event, context):
@@ -16,59 +16,30 @@ def create_batch_endpoint(event, context):
     logger = logging.getLogger("create_batch_endpoint")
     logger.error(event)
 
-    if 'queryStringParameters' not in event:
-        return {'error_message': "Missing query parameters."}
+    if 'start_id' not in event or 'end_id' not in event:
+        return {"error_message": "Missing parameters. Expecting start_id and end_id, was %s" % str(event)}
 
-    query_params = event['queryStringParameters']
-
-    ### Validate params
-    start_id_str = query_params['start_id']
-    if start_id_str is None:
-        return {'error_message': "Missing start_id parameter."}
     try:
-        start_id = long(start_id_str)
+        start_id = long(event['start_id'])
+        end_id = long(event['start_id'])
     except ValueError:
-        return {'error_message': "start_id is not a long number."}
+        return {'error_message': "Can not parse start_id and end_id to long from %s" % str(event)}
 
     if start_id <= 0:
-        return {'error_message': "start_id have to be bigger then 0."}
-
-    end_id_str = query_params['end_id']
-    if end_id_str is None:
-        return {'error_message': "Missing end_id parameter."}
-    try:
-        end_id = long(end_id_str)
-    except ValueError:
-        return {'error_message': "end_id is not a long number."}
+        return {'error_message': "start_id have to be bigger then 0, was %s" % str(start_id)}
 
     if end_id <= 0:
-        return {'error_message': "end_id have to be bigger then 0."}
+        return {'error_message': "end_id have to be bigger then 0, was %s" % str(end_id)}
 
-    ### Generate batch id
-    batch_id = ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(20))
+    if start_id > end_id:
+        tmp = start_id
+        start_id = end_id
+        end_id = tmp
 
-    ### Create batch entry in db
-    client = boto3.client('dynamodb')
-    client.put_item(
-        TableName='batches',
-        Item={
-            "batch_id": {
-                'N': batch_id
-            },
-            "create_time": {
-                'S': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S%z")
-            },
-            "start_id": {
-                'N': start_id
-            },
-            "end_id": {
-                'N': end_id
-            },
-            "status": {
-                'S': "REQUEST"
-            }
-        }
-    )
+    batch_id = str(uuid.uuid4())
+
+    batches = get_table("batches")
+    batches.insert_item({"batch_id": batch_id, "start_id": start_id, "end_id": end_id})
 
     return {"batch_id": batch_id}
 
