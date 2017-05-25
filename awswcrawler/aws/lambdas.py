@@ -1,5 +1,6 @@
 import boto3
 import time
+from botocore.exceptions import ClientError
 
 
 def get_lambda(function_name):
@@ -15,7 +16,22 @@ def get_lambda(function_name):
 def create_lambda(function_name, bucket_name, bucket_key, role_arn):
     client = boto3.client('lambda')
 
-    response = client.create_function(
+    try:
+        __create_lambda__(bucket_key, bucket_name, client, function_name, role_arn)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'InvalidParameterValueException':
+            print("Error creating lambda. Possible problem with role replication. Waiting 10s to retry...")
+            time.sleep(10)
+            __create_lambda__(bucket_key, bucket_name, client, function_name, role_arn)
+            return
+        else:
+            raise e
+
+    return LambdaFunction(function_name)
+
+
+def __create_lambda__(bucket_key, bucket_name, client, function_name, role_arn):
+    client.create_function(
         FunctionName=function_name_to_lambda_name(function_name),
         Runtime='python2.7',  # 'python3.6'
         Role=role_arn,
@@ -27,8 +43,6 @@ def create_lambda(function_name, bucket_name, bucket_key, role_arn):
         Timeout=300,
         MemorySize=256
     )
-
-    return LambdaFunction(function_name)
 
 
 def delete_lambda(function_name):

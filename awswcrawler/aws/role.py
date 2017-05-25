@@ -23,8 +23,14 @@ def create_role(name):
     client.create_role(RoleName=name, AssumeRolePolicyDocument=json.dumps(policy_document))
     for x in range(1, 5):
         if is_role_exists(name):
+
+            # Role exists but for some reason lambda will throw exception with out this sleep
+            print("Waiting for lambda role to be replicated... 10s")
+            time.sleep(10)
+
             return Role(name)
 
+        print("Waiting for lambda role to be created... 2s")
         time.sleep(2)
 
     raise RuntimeError("Timeout waiting for role to be created")
@@ -92,7 +98,6 @@ class Role:
     def get_arn(self):
         account_id = boto3.client('sts').get_caller_identity().get('Account')
         arn = "arn:aws:iam::%s:role/%s" % (account_id, self.name)
-        print(arn)
         return arn
 
 
