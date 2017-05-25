@@ -28,6 +28,30 @@ def is_table_exists(name):
     return t_name is not None
 
 
+def ddb_actions():
+    return [
+        "dynamodb:ListTables",
+        "dynamodb:DescribeTable"
+    ]
+
+
+def write_actions():
+    return [
+        "dynamodb:BatchWriteItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem"
+    ]
+
+
+def read_actions():
+    return [
+        "dynamodb:BatchGetItem",
+        "dynamodb:GetItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
+    ]
+
+
 def create_table_with_pk(name, pk_name, pk_type, read_capacity=5, write_capacity=5):
     """
     Creates DynamoDB table with only partition key.
@@ -88,7 +112,8 @@ def create_table_with_pk_and_sk(name, pk_name, pk_type, sk_name, sk_type, read_c
         (pk, sk) = __extract_keys_from_schema_array__(response['TableDescription']['KeySchema'])
         return DDBTable(response['TableDescription']['TableName'], pk, sk)
     else:
-        for x in range(1, 5):
+        for x in range(1, 8):
+            print("Waiting for %s table creation..." % name)
             time.sleep(2)
             response = client.describe_table(
                 TableName=name
@@ -96,6 +121,7 @@ def create_table_with_pk_and_sk(name, pk_name, pk_type, sk_name, sk_type, read_c
 
             if response['Table']['TableStatus'] == 'ACTIVE':
                 (pk, sk) = __extract_keys_from_schema_array__(response['Table']['KeySchema'])
+                print("Table %s created." % name)
                 return DDBTable(response['Table']['TableName'], pk, sk)
 
         raise RuntimeError("Timeout waiting for table to be created")
@@ -168,4 +194,9 @@ class DDBTable:
         )
 
         return response['Items']
+
+    def get_arn(self):
+        account_id = boto3.client('sts').get_caller_identity().get('Account')
+        return "arn:aws:dynamodb:*:%s:table/%s" % (account_id, self.name)
+
 
