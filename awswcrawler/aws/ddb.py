@@ -154,8 +154,10 @@ def delete_table(name):
             try:
                 client.describe_table(TableName=name)
             except ClientError as e:
-                print(e)
-                return
+                if e.response['Error']['Code'] == 'ResourceNotFoundException':
+                    return
+                else:
+                    raise e
 
         raise RuntimeError("Timeout waiting for table to be deleted")
 
