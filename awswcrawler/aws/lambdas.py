@@ -1,6 +1,7 @@
 import boto3
 import time
 from botocore.exceptions import ClientError
+import awswcrawler.aws.role as role
 
 
 def get_lambda(function_name):
@@ -57,6 +58,13 @@ def delete_lambda(function_name):
     )
 
 
+def lambdas_actions():
+    return [
+        "lambda:ListFunctions",
+        "lambda:GetFunction"
+    ]
+
+
 def function_name_to_lambda_name(function_name):
     return "-".join(function_name.split("."))
 
@@ -90,5 +98,17 @@ class LambdaFunction:
 
     def get_arn(self):
         return next((f['FunctionArn'] for f in self.client.list_functions()['Functions'] if f['FunctionName'] == self.lambda_name), None)
+
+    def get_role(self):
+        response = self.client.get_function(
+            FunctionName=self.lambda_name,
+        )
+
+        role_arn = response['Configuration']['Role']
+        role_name = role.get_role_name_by_arn(role_arn)
+        if role_name is not None:
+            return role.get_role(role_name)
+        else:
+            return None
 
 

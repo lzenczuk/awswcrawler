@@ -35,6 +35,12 @@ def ddb_actions():
     ]
 
 
+def ddb_create_actions():
+    return [
+        "dynamodb:CreateTable"
+    ]
+
+
 def write_actions():
     return [
         "dynamodb:BatchWriteItem",

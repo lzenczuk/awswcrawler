@@ -21,7 +21,7 @@ def create_role(name):
     }
 
     client.create_role(RoleName=name, AssumeRolePolicyDocument=json.dumps(policy_document))
-    for x in range(1, 5):
+    for x in range(1, 10):
         if is_role_exists(name):
 
             # Role exists but for some reason lambda will throw exception with out this sleep
@@ -41,6 +41,15 @@ def get_role(name):
         return Role(name)
     else:
         return None
+
+
+def get_role_name_by_arn(role_arn):
+    client = boto3.client('iam')
+    for role in client.list_roles()['Roles']:
+        if role['Arn'] == role_arn:
+            return role['RoleName']
+
+    return None
 
 
 def is_role_exists(name):
@@ -73,6 +82,18 @@ def delete_role(name):
         raise RuntimeError("Timeout waiting for role to be created")
 
 
+def role_actions():
+    return [
+        "iam:ListRoles",
+    ]
+
+
+def write_actions():
+    return [
+        "iam:PutRolePolicy"
+    ]
+
+
 class Role:
     def __init__(self, name):
         self.client = boto3.client('iam')
@@ -94,6 +115,9 @@ class Role:
                     }
                 ]}),
         )
+
+        print("Waiting to propagate new permissions... 10s")
+        time.sleep(10)
 
     def get_arn(self):
         account_id = boto3.client('sts').get_caller_identity().get('Account')

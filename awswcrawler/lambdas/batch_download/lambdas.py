@@ -2,7 +2,9 @@ import logging
 
 import uuid
 
-from awswcrawler.aws.ddb import get_table
+import awswcrawler.aws.ddb as ddb
+import awswcrawler.aws.sqs as sqs
+import awswcrawler.aws.lambdas as lbs
 
 
 def create_batch_endpoint(event, context):
@@ -21,7 +23,7 @@ def create_batch_endpoint(event, context):
 
     try:
         start_id = long(event['start_id'])
-        end_id = long(event['start_id'])
+        end_id = long(event['end_id'])
     except ValueError:
         return {'error_message': "Can not parse start_id and end_id to long from %s" % str(event)}
 
@@ -38,8 +40,21 @@ def create_batch_endpoint(event, context):
 
     batch_id = str(uuid.uuid4())
 
-    batches = get_table("batches")
+    batches = ddb.get_table("batches")
     batches.insert_item({"batch_id": batch_id, "start_id": start_id, "end_id": end_id})
+
+    batch = ddb.create_table_with_pk_and_sk("download_batch_%s" % batch_id, "batch_id", 'S', "download_id", "N")
+    queue = sqs.create_standard_sqs_queue("download_batch_%s_q" % batch_id)
+
+    self = lbs.get_lambda("awswcrawler.lambdas.batch_download.lambdas.create_batch_endpoint")
+    role = self.get_role()
+    role.add_permission(batch.get_arn(), ddb.write_actions())
+    role.add_permission(queue.get_arn(), sqs.write_actions())
+
+    for d_id in range(start_id, end_id):
+        print(d_id)
+        batch.insert_item({"batch_id": batch_id, "download_id": d_id})
+        queue.send_message({"batch_id": batch_id, "download_id": d_id})
 
     return {"batch_id": batch_id}
 
