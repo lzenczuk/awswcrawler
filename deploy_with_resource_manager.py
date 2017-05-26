@@ -42,4 +42,7 @@ api = rm.create_rest_api("batch_api")
 api.map_lambda("POST", "batches?start_id={!start_id}&end_id={!end_id}", lb)
 api.deploy("dev")
 
+print("Creating sqs")
+sqs = rm.create_standard_sqs_queue("test_sqs" + str(build_number))
+
 

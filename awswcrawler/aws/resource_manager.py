@@ -9,6 +9,7 @@ import awswcrawler.aws.role as role
 import awswcrawler.aws.lambdas as lambdas
 import awswcrawler.aws.rest as rest
 from awswcrawler.aws.rest import Rest
+import awswcrawler.aws.sqs as sqs
 
 
 class LocalFolderResourceCreationLogger:
@@ -27,16 +28,24 @@ class LocalFolderResourceCreationLogger:
         else:
             os.makedirs(self.log_folder_path)
 
-    def add_resource(self, name, resource_type):
+    def add_resource(self, name, resource_type, **kwargs):
         file_name = "%s_local_log.json" % str(time.time())
 
         file_path = os.path.join(self.log_folder_path, file_name)
 
         with open(file_path, "w") as f:
-            entry = {
-                "resource_type": resource_type,
-                "resource_name": name
-            }
+            if kwargs is None:
+                entry = {
+                    "resource_type": resource_type,
+                    "resource_name": name,
+                    "extra_params": None
+                }
+            else:
+                entry = {
+                    "resource_type": resource_type,
+                    "resource_name": name,
+                    "extra_params": kwargs
+                }
 
             f.write(json.dumps(entry))
 
@@ -55,7 +64,17 @@ class LocalFolderResourceCreationLogger:
 
             with open(file_path, "r") as f:
                 entry = json.loads(f.read())
-                resources.append({"resource_id": file_name, "resource_name": entry['resource_name'], "resource_type": entry['resource_type']})
+
+                resource = {
+                    "resource_id": file_name,
+                    "resource_name": entry['resource_name'],
+                    "resource_type": entry['resource_type']
+                }
+
+                if 'extra_params' in entry:
+                    resource['extra_params'] = entry['extra_params']
+
+                resources.append(resource)
 
         return resources
 
@@ -70,8 +89,18 @@ class LocalFolderResourceCreationLogger:
 
             with open(file_path, "r") as f:
                 entry = json.loads(f.read())
-                if entry['resource_name']==name and entry['resource_type']==resource_type:
-                    return file_name
+                if entry['resource_name'] == name and entry['resource_type'] == resource_type:
+
+                    resource = {
+                        "resource_id": file_name,
+                        "resource_name": entry['resource_name'],
+                        "resource_type": entry['resource_type']
+                    }
+
+                    if 'extra_params' in entry:
+                        resource['extra_params'] = entry['extra_params']
+
+                    return resource
 
         return None
 
@@ -98,12 +127,12 @@ class ResourceManager:
         return bucket
 
     def destroy_bucket(self, name):
-        resource_id = self.resource_creation_logger.find_resource_log(name, "s3_bucket")
+        resource = self.resource_creation_logger.find_resource_log(name, "s3_bucket")
 
-        if resource_id is not None:
+        if resource is not None:
             s3.delete_bucket(name)
 
-        self.resource_creation_logger.delete_resource_log(resource_id)
+        self.resource_creation_logger.delete_resource_log(resource['resource_id'])
 
     def create_ddb_table(self, name, pk_name, pk_type, sk_name=None, sk_type=None, read_capacity=5, write_capacity=5):
         table = ddb.create_table_with_pk_and_sk(name, pk_name, pk_type, sk_name, sk_type, read_capacity, write_capacity)
@@ -112,12 +141,12 @@ class ResourceManager:
         return table
 
     def destroy_ddb_table(self, name):
-        resource_id = self.resource_creation_logger.find_resource_log(name, "ddb_table")
+        resource = self.resource_creation_logger.find_resource_log(name, "ddb_table")
 
-        if resource_id is not None:
+        if resource is not None:
             ddb.delete_table(name)
 
-        self.resource_creation_logger.delete_resource_log(resource_id)
+        self.resource_creation_logger.delete_resource_log(resource['resource_id'])
 
     def create_lambda_role(self, name):
         lambda_role = role.create_role(name)
@@ -126,12 +155,12 @@ class ResourceManager:
         return lambda_role
 
     def destroy_lambda_role(self, name):
-        resource_id = self.resource_creation_logger.find_resource_log(name, "lambda_role")
+        resource = self.resource_creation_logger.find_resource_log(name, "lambda_role")
 
-        if resource_id is not None:
+        if resource is not None:
             role.delete_role(name)
 
-        self.resource_creation_logger.delete_resource_log(resource_id)
+        self.resource_creation_logger.delete_resource_log(resource['resource_id'])
 
     def create_lambda(self, lambda_function_name, bucket_name, bucket_key, role_arn):
         lambda_function = lambdas.create_lambda(lambda_function_name, bucket_name, bucket_key, role_arn)
@@ -140,12 +169,12 @@ class ResourceManager:
         return lambda_function
 
     def destroy_lambda(self, name):
-        resource_id = self.resource_creation_logger.find_resource_log(name, "lambda_function")
+        resource = self.resource_creation_logger.find_resource_log(name, "lambda_function")
 
-        if resource_id is not None:
+        if resource is not None:
             lambdas.delete_lambda(name)
 
-        self.resource_creation_logger.delete_resource_log(resource_id)
+        self.resource_creation_logger.delete_resource_log(resource['resource_id'])
 
     def create_rest_api(self, rest_api_name):
         rest_api = Rest(rest_api_name)
@@ -154,12 +183,26 @@ class ResourceManager:
         return rest_api
 
     def destroy_rest_api(self, name):
-        resource_id = self.resource_creation_logger.find_resource_log(name, "rest_api")
+        resource = self.resource_creation_logger.find_resource_log(name, "rest_api")
 
-        if resource_id is not None:
+        if resource is not None:
             rest.delete_rest_api(name)
 
-        self.resource_creation_logger.delete_resource_log(resource_id)
+        self.resource_creation_logger.delete_resource_log(resource['resource_id'])
+
+    def create_standard_sqs_queue(self, name):
+        queue = sqs.create_standard_sqs_queue(name)
+        self.resource_creation_logger.add_resource(name, "sqs", queue_url=queue.queue_url)
+
+        return queue
+
+    def destroy_sqs(self, name):
+        resource = self.resource_creation_logger.find_resource_log(name, "sqs")
+
+        if resource is not None:
+            sqs.delete_sqs_queue(resource['extra_params']['queue_url'])
+
+        self.resource_creation_logger.delete_resource_log(resource['resource_id'])
 
     def destroy(self):
         rl = self.resource_creation_logger.get_resource_logs()
@@ -175,6 +218,8 @@ class ResourceManager:
                 self.destroy_lambda(resource['resource_name'])
             elif resource['resource_type'] == "rest_api":
                 self.destroy_rest_api(resource['resource_name'])
+            elif resource['resource_type'] == "sqs":
+                self.destroy_sqs(resource['resource_name'])
             else:
                 raise RuntimeError("Unknown resource type: %s" % str(resource))
 
