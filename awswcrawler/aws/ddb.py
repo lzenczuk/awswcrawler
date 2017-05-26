@@ -113,7 +113,7 @@ def create_table_with_pk_and_sk(name, pk_name, pk_type, sk_name, sk_type, read_c
         return DDBTable(response['TableDescription']['TableName'], pk, sk)
     else:
         for x in range(1, 8):
-            print("Waiting for %s table creation..." % name)
+            print("Waiting for %s table to be created... 2s" % name)
             time.sleep(2)
             response = client.describe_table(
                 TableName=name
@@ -149,8 +149,7 @@ def delete_table(name):
             TableName=name
         )
 
-        for x in range(1, 5):
-            time.sleep(2)
+        for x in range(1, 10):
             try:
                 client.describe_table(TableName=name)
             except ClientError as e:
@@ -158,6 +157,8 @@ def delete_table(name):
                     return
                 else:
                     raise e
+            print("Waiting for dynamo db table to be deleted... 2s")
+            time.sleep(2)
 
         raise RuntimeError("Timeout waiting for table to be deleted")
 
@@ -199,6 +200,7 @@ class DDBTable:
 
     def get_arn(self):
         account_id = boto3.client('sts').get_caller_identity().get('Account')
-        return "arn:aws:dynamodb:*:%s:table/%s" % (account_id, self.name)
+        region = boto3.session.Session().region_name
+        return "arn:aws:dynamodb:%s:%s:table/%s" % (region, account_id, self.name)
 
 
