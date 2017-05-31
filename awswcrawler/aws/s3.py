@@ -83,6 +83,29 @@ class S3Bucket:
         with open(file_path, 'rb') as data:
             self.client.upload_fileobj(data, self.name, bucket_key, ExtraArgs=extra_args)
 
+    def write_string(self, file_path, content, content_type=None):
+        if content_type is not None:
+            self.client.put_object(
+                Body=content,
+                Bucket=self.name,
+                Key=file_path,
+                ContentType=content_type
+            )
+        else:
+            self.client.put_object(
+                Body=content,
+                Bucket=self.name,
+                Key=file_path
+            )
+
+    def read_string(self, file_path):
+        response = self.client.get_object(
+            Bucket=self.name,
+            Key=file_path
+        )
+
+        return response['Body'].read()
+
     def config_website(self, error_document_key="error.html", index_document_suffix="index.html"):
         self.client.put_bucket_website(
             Bucket=self.name,

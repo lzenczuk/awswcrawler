@@ -5,6 +5,7 @@ import uuid
 import awswcrawler.aws.ddb as ddb
 import awswcrawler.aws.sqs as sqs
 import awswcrawler.aws.lambdas as lbs
+from aws.resource_manager import S3FolderResourceCreationLogger, ResourceManager
 
 
 def create_batch_endpoint(event, context):
@@ -43,8 +44,11 @@ def create_batch_endpoint(event, context):
     batches = ddb.get_table("batches")
     batches.insert_item({"batch_id": batch_id, "start_id": start_id, "end_id": end_id})
 
-    batch = ddb.create_table_with_pk_and_sk("download_batch_%s" % batch_id, "batch_id", 'S', "download_id", "N")
-    queue = sqs.create_standard_sqs_queue("download_batch_%s_q" % batch_id)
+    rcl = S3FolderResourceCreationLogger("build", "batch_resources_%s" % batch_id)
+    rm = ResourceManager(rcl)
+
+    batch = rm.create_ddb_table("download_batch_%s" % batch_id, "batch_id", 'S', "download_id", "N")
+    queue = rm.create_standard_sqs_queue("download_batch_%s_q" % batch_id)
 
     self = lbs.get_lambda("awswcrawler.lambdas.batch_download.lambdas.create_batch_endpoint")
     role = self.get_role()

@@ -115,6 +115,85 @@ class LocalFolderResourceCreationLogger:
 
         os.removedirs(self.log_folder_path)
 
+######################################################################
+
+
+class S3FolderResourceCreationLogger:
+    def __init__(self, bucket_name, log_name):
+        self.bucket = s3.get_bucket(bucket_name)
+        if self.bucket is None:
+            raise RuntimeError("Log bucket %s not exists." % bucket_name)
+
+        self.log_name = log_name
+
+    def add_resource(self, name, resource_type, **kwargs):
+        file_name = "%s_local_log.json" % str(time.time())
+
+        file_path = self.log_name + "/" + file_name
+
+        if kwargs is None:
+            entry = {
+                "resource_type": resource_type,
+                "resource_name": name,
+                "extra_params": None
+            }
+        else:
+            entry = {
+                "resource_type": resource_type,
+                "resource_name": name,
+                "extra_params": kwargs
+            }
+
+        self.bucket.write_string(file_path, json.dumps(entry), "application/json")
+
+        return file_name
+
+    def get_resource_logs(self):
+        files = [f for f in self.bucket.list_objects() if f.startswith(self.log_name+"/")]
+        files.sort()
+        files.reverse()
+
+        resources = []
+
+        for file_name in files:
+
+            content = self.bucket.read_string(file_name)
+
+            entry = json.loads(content)
+
+            resource = {
+                "resource_id": file_name,
+                "resource_name": entry['resource_name'],
+                "resource_type": entry['resource_type']
+            }
+
+            if 'extra_params' in entry:
+                resource['extra_params'] = entry['extra_params']
+
+            resources.append(resource)
+
+        return resources
+
+    def find_resource_log(self, name, resource_type):
+        for resource in self.get_resource_logs():
+            if resource['resource_name'] == name and resource['resource_type'] == resource_type:
+                return resource
+
+        return None
+
+    def delete_resource_log(self, resource_id):
+        self.bucket.delete_object(resource_id)
+
+    def destroy(self):
+        files = self.get_resource_logs()
+
+        if len(files) != 0:
+            raise RuntimeError("Can not destroy local folder resource creation logger. Not all resources destroyed.")
+
+        # in s3 there are no folder concept so we don't need to delete it
+
+
+######################################################################
 
 class ResourceManager:
     def __init__(self, resource_creation_logger):
